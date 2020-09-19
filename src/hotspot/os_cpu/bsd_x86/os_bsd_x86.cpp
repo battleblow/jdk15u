@@ -874,6 +874,7 @@ bool os::is_allocatable(size_t bytes) {
 
 juint os::cpu_microcode_revision() {
   juint result = 0;
+#ifdef __APPLE__
   char data[8];
   size_t sz = sizeof(data);
   int ret = sysctlbyname("machdep.cpu.microcode_version", data, &sz, NULL, 0);
@@ -881,6 +882,7 @@ juint os::cpu_microcode_revision() {
     if (sz == 4) result = *((juint*)data);
     if (sz == 8) result = *((juint*)data + 1); // upper 32-bits
   }
+#endif
   return result;
 }
 
