@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, 2018, Red Hat, Inc. All rights reserved.
+ * Copyright (c) 2020, Red Hat, Inc. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -23,49 +23,52 @@
  */
 
 /*
- * @test TestThreadCountsOverride
- * @summary Test that Shenandoah GC thread counts are overridable
- * @requires vm.gc.Shenandoah
+ * @test TestSoftMaxHeapSize
+ * @summary Test that Shenandoah checks SoftMaxHeapSize
+ * @requires vm.gc.Shenandoah & !vm.graal.enabled
  * @library /test/lib
  * @modules java.base/jdk.internal.misc
  *          java.management
- * @run driver TestThreadCountsOverride
+ * @run driver TestSoftMaxHeapSize
  */
 
 import jdk.test.lib.process.ProcessTools;
 import jdk.test.lib.process.OutputAnalyzer;
 
-public class TestThreadCountsOverride {
+public class TestSoftMaxHeapSize {
     public static void main(String[] args) throws Exception {
         {
-            ProcessBuilder pb = ProcessTools.createJavaProcessBuilder(
-                "-Xmx128m",
-                "-XX:+UnlockDiagnosticVMOptions",
-                "-XX:+UnlockExperimentalVMOptions",
-                "-XX:+UseShenandoahGC",
-                "-XX:ParallelGCThreads=1",
-                "-XX:+PrintFlagsFinal",
-                "-version");
+            ProcessBuilder pb = ProcessTools.createJavaProcessBuilder("-XX:+UnlockExperimentalVMOptions",
+                    "-XX:+UseShenandoahGC",
+                    "-Xms4m",
+                    "-Xmx128m",
+                    "-XX:SoftMaxHeapSize=4m",
+                    "-version");
             OutputAnalyzer output = new OutputAnalyzer(pb.start());
-
-            output.shouldMatch("ParallelGCThreads(.*)= 1 ");
             output.shouldHaveExitValue(0);
         }
 
         {
-            ProcessBuilder pb = ProcessTools.createJavaProcessBuilder(
-                "-Xmx128m",
-                "-XX:+UnlockDiagnosticVMOptions",
-                "-XX:+UnlockExperimentalVMOptions",
-                "-XX:+UseShenandoahGC",
-                "-XX:ConcGCThreads=1",
-                "-XX:+PrintFlagsFinal",
-                "-version");
+            ProcessBuilder pb = ProcessTools.createJavaProcessBuilder("-XX:+UnlockExperimentalVMOptions",
+                    "-XX:+UseShenandoahGC",
+                    "-Xms4m",
+                    "-Xmx128m",
+                    "-XX:SoftMaxHeapSize=128m",
+                    "-version");
             OutputAnalyzer output = new OutputAnalyzer(pb.start());
-
-            output.shouldMatch("ConcGCThreads(.*)= 1 ");
             output.shouldHaveExitValue(0);
         }
-    }
 
+        {
+            ProcessBuilder pb = ProcessTools.createJavaProcessBuilder("-XX:+UnlockExperimentalVMOptions",
+                    "-XX:+UseShenandoahGC",
+                    "-Xms4m",
+                    "-Xmx128m",
+                    "-XX:SoftMaxHeapSize=129m",
+                    "-version");
+            OutputAnalyzer output = new OutputAnalyzer(pb.start());
+            output.shouldHaveExitValue(1);
+            output.shouldContain("SoftMaxHeapSize must be less than or equal to the maximum heap size");
+        }
+    }
 }

@@ -105,17 +105,6 @@ public:
   virtual bool is_thread_safe() { return false; }
 };
 
-#ifdef ASSERT
-class ShenandoahAssertToSpaceClosure : public OopClosure {
-private:
-  template <class T>
-  void do_oop_work(T* p);
-public:
-  void do_oop(narrowOop* p);
-  void do_oop(oop* p);
-};
-#endif
-
 typedef ShenandoahLock    ShenandoahHeapLock;
 typedef ShenandoahLocker  ShenandoahHeapLocker;
 
@@ -172,6 +161,7 @@ public:
 private:
            size_t _initial_size;
            size_t _minimum_size;
+  volatile size_t _soft_max_size;
   shenandoah_padding(0);
   volatile size_t _used;
   volatile size_t _committed;
@@ -190,12 +180,15 @@ public:
   size_t bytes_allocated_since_gc_start();
   void reset_bytes_allocated_since_gc_start();
 
-  size_t min_capacity()     const;
-  size_t max_capacity()     const;
-  size_t initial_capacity() const;
-  size_t capacity()         const;
-  size_t used()             const;
-  size_t committed()        const;
+  size_t min_capacity()      const;
+  size_t max_capacity()      const;
+  size_t soft_max_capacity() const;
+  size_t initial_capacity()  const;
+  size_t capacity()          const;
+  size_t used()              const;
+  size_t committed()         const;
+
+  void set_soft_max_capacity(size_t v);
 
 // ---------- Workers handling
 //
@@ -400,10 +393,11 @@ public:
   void entry_class_unloading();
   void entry_strong_roots();
   void entry_cleanup_early();
+  void entry_rendezvous_roots();
   void entry_evac();
   void entry_updaterefs();
   void entry_cleanup_complete();
-  void entry_uncommit(double shrink_before);
+  void entry_uncommit(double shrink_before, size_t shrink_until);
 
 private:
   // Actual work for the phases
@@ -423,11 +417,14 @@ private:
   void op_class_unloading();
   void op_strong_roots();
   void op_cleanup_early();
+  void op_rendezvous_roots();
   void op_conc_evac();
   void op_stw_evac();
   void op_updaterefs();
   void op_cleanup_complete();
-  void op_uncommit(double shrink_before);
+  void op_uncommit(double shrink_before, size_t shrink_until);
+
+  void rendezvous_threads();
 
   // Messages for GC trace events, they have to be immortal for
   // passing around the logging/tracing systems
@@ -595,7 +592,6 @@ private:
   inline HeapWord* allocate_from_gclab(Thread* thread, size_t size);
   HeapWord* allocate_from_gclab_slow(Thread* thread, size_t size);
   HeapWord* allocate_new_gclab(size_t min_size, size_t word_size, size_t* actual_size);
-  void retire_and_reset_gclabs();
 
 public:
   HeapWord* allocate_memory(ShenandoahAllocRequest& request);
@@ -615,10 +611,11 @@ public:
   size_t max_tlab_size() const;
   size_t tlab_used(Thread* ignored) const;
 
-  void resize_tlabs();
+  void ensure_parsability(bool retire_labs);
 
-  void ensure_parsability(bool retire_tlabs);
-  void make_parsable(bool retire_tlabs);
+  void labs_make_parsable();
+  void tlabs_retire(bool resize);
+  void gclabs_retire(bool resize);
 
 // ---------- Marking support
 //
@@ -659,7 +656,6 @@ public:
   void reset_mark_bitmap();
 
   // SATB barriers hooks
-  template<bool RESOLVE>
   inline bool requires_marking(const void* entry) const;
   void force_satb_flush_all_threads();
 
